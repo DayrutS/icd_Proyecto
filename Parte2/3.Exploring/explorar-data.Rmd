@@ -1,0 +1,183 @@
+---
+title: "Explorar"
+output: html_document
+---
+
+
+```{r init, echo=FALSE, message=FALSE}
+# Cargar paquetes
+library(tm)
+library(ggplot2)
+library(slam)
+library(wordcloud)
+
+# Abrir/Cargar los datos
+data <- read.csv("lastWords_dataset.csv", header=TRUE, encoding="UTF-8" )
+
+# columna(date) AS.DATE
+data$date <- as.Date(data$date)
+```
+
+### >Dataset
+
+1. Dimensiones: numero de filas(muestras) y numero de columnas(atributos)
+
+```{r dimensiones, echo=FALSE}
+dim(data)
+```
+
+2. Atributos: nombres de las columnas y tipo de los atributos
+
+```{r atributosNombres, echo=FALSE}
+names(data)
+
+str(data)
+```
+
+
+### >Atributo_Age(edad del convicto ejecutado)
+
+1. Medidas descriptivas: edad_minima, edad_maxima, edad_promedio
+```{r edad, echo=FALSE}
+summary(data$age)
+
+ggplot(data, aes(x=age)) + geom_histogram(binwidth=.5, colour="black", fill="orange") + ggtitle("Edad del convicto al ser ejecutado")
+```
+
+
+### >Atributo_Date(fecha yyyy-mm-dd de la ejecucion)
+
+1. Medidas descriptivas: primera fecha registrada, fecha de la ultima ejecucion realizada
+
+```{r fecha, echo=FALSE}
+summary(data$date)
+
+# ocurrencias por anio
+table.Y.N_exec <- table(format(as.Date(data$date, format="%Y-%m-%d"),"%Y"))
+df_y.Nexec <- as.data.frame(table.Y.N_exec)
+
+ggplot(df_y.Nexec, aes(Var1, Freq, group = 1)) + geom_point() + geom_line() + labs(x="Year", y="Executed", title="Numero de ejecuciones por Anio") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+### >Atributo_Race(raza del convicto ejecutado)
+
+1. Conteo: distribucion de razas(542 total)
+
+```{r raza, echo=FALSE}
+summary(data$race)
+
+boxplot(data$age~data$race, main="Distribucion Edades por Raza", col=c("mediumpurple", "brown", "yellow", "pink"))
+```
+
+
+### >Atributo_County(condado donde se realizo la ejecucion)
+
+1. Distribucion: ejecuciones por condado
+
+```{r condado, echo=FALSE}
+sort(table(data$county), decreasing=TRUE)
+```
+
+
+### Last_Words (ultimas palabras registradas)
+
+```{r initFrecLW, echo=FALSE}
+# Crea corpus
+corpusLW <- Corpus(VectorSource(data$last_words))
+
+lalawords <- sapply(corpusLW, as.character)
+
+ngram_tokenizer <- function(n = 1L, skip_word_none = TRUE) {
+  stopifnot(is.numeric(n), is.finite(n), n > 0)
+  options <- stringi::stri_opts_brkiter(type="word", skip_word_none = skip_word_none)
+  
+  function(x) {
+    stopifnot(is.character(x))
+    
+    # Split into word tokens
+    tokens <- unlist(stringi::stri_split_boundaries(x, opts_brkiter=options))
+    len <- length(tokens)
+    
+    if(all(is.na(tokens)) || len < n) {
+      # If we didn't detect any words or number of tokens is less than n return empty vector
+      character(0)
+    } else {
+      sapply(
+        1:max(1, len - n + 1),
+        function(i) stringi::stri_join(tokens[i:min(len, i + n - 1)], collapse = " ")
+      )
+    }
+  }
+}
+
+```
+
+0. Cantidad de convictos que se negaron a decir sus 'ultimas palabras':
+
+```{r contar_na, echo=FALSE}
+lstatements <- data.frame(data$last_words)
+# SET last_words[empty_statements] to NA
+lstatements[lstatements==""] <- NA
+
+sum(is.na(lstatements))
+
+# lstatements <- na.omit(lstatements)
+
+```
+
+
+
+1. Palabras mas frecuentes: 1 palabra
+
+```{r frecPal_i, echo=FALSE}
+# document-term-marix
+dtm_i <- DocumentTermMatrix(corpusLW)
+
+sum_i <- colapply_simple_triplet_matrix(dtm_i, FUN=sum)
+
+head(sort(sum_i, decreasing=T), 18)
+
+# wordcloud: palabras(1) mas frecuentes
+wordcloud(corpusLW, scale=c(6,0.7), max.words=123,random.order=FALSE, rot.per=0.35,colors=brewer.pal(8,"Dark2"))
+
+#
+freq.one <- sort(table(ngram_tokenizer(1)(lalawords)), decreasing = TRUE)
+fw1.df <- as.data.frame(freq.one)
+ggplot(head(fw1.df,15), aes(reorder(Var1,Freq), Freq)) +   geom_bar(stat = "identity") + coord_flip() +   xlab("Words") + ylab("Frequency") +   ggtitle("Most frequent words")
+```
+
+2. Bigramas mas frecuentes: 2 palabras
+
+```{r frecPal_ii, echo=FALSE}
+freq.bi <- sort(table(ngram_tokenizer(2)(lalawords)), decreasing = TRUE)
+head(freq.bi, 20)
+
+# wordcloud: palabras(2) mas frecuentes
+fw2.df <- as.data.frame(freq.bi)
+wordcloud(fw2.df$Var1, fw2.df$Freq,max.words=18,random.order=FALSE, colors=brewer.pal(8,"Dark2"))
+
+#
+ggplot(head(fw2.df,15), aes(reorder(Var1,Freq), Freq)) +   geom_bar(stat = "identity") + coord_flip() +   xlab("Bigrams") + ylab("Frequency") +   ggtitle("Most frequent bigrams")
+```
+
+3. Trigramas mas frecuentes: 3 palabras
+
+```{r frecPal_iii, echo=FALSE}
+freq.tri <- sort(table(ngram_tokenizer(3)(lalawords)), decreasing = TRUE)
+head(freq.tri, 9)
+
+#
+fw3.df <- as.data.frame(freq.tri)
+ggplot(head(fw3.df,15), aes(reorder(Var1,Freq), Freq)) +   geom_bar(stat = "identity") + coord_flip() +   xlab("Trigrams") + ylab("Frequency") +   ggtitle("Most frequent trigrams")
+```
+
+4. Tetragramas mas frecuentes: 4 palabras
+```{r frecPal_iv, echo=FALSE}
+freq.tetra <- sort(table(ngram_tokenizer(4)(lalawords)), decreasing = TRUE)
+head(freq.tetra, 10)
+
+#
+fw4.df <- as.data.frame(freq.tetra)
+ggplot(head(fw4.df,15), aes(reorder(Var1,Freq), Freq)) +   geom_bar(stat = "identity") + coord_flip() +   xlab("Tetragrams") + ylab("Frequency") +   ggtitle("Most frequent tetragrams")
+```

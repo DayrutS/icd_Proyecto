@@ -1,0 +1,219 @@
+---
+title: "Análisis de sentimiento"
+output: html_document
+---
+
+
+```{r init, echo=FALSE, message=FALSE}
+# Cargar paquetes
+library(sentiment)
+library(ggplot2)
+library(tm)
+library(wordcloud)
+
+
+# Abrir/Cargar los datos
+data <- read.csv("lastWords_dataset.csv", header=TRUE, encoding="UTF-8" )
+
+# columna(date) AS.DATE
+data$date <- as.Date(data$date)
+
+# last_statements
+lstatements <- data.frame(data$last_words)
+# SET last_words[empty_statements] to NA
+lstatements[lstatements==""] <- NA
+# descartar las muestras vacias(no-ultimas-palabras)(""/NA)
+lstatements <- na.omit(lstatements)
+
+ngram_tokenizer <- function(n = 1L, skip_word_none = TRUE) {
+  stopifnot(is.numeric(n), is.finite(n), n > 0)
+  options <- stringi::stri_opts_brkiter(type="word", skip_word_none = skip_word_none)
+  
+  function(x) {
+    stopifnot(is.character(x))
+    
+    # Split into word tokens
+    tokens <- unlist(stringi::stri_split_boundaries(x, opts_brkiter=options))
+    len <- length(tokens)
+    
+    if(all(is.na(tokens)) || len < n) {
+      # If we didn't detect any words or number of tokens is less than n return empty vector
+      character(0)
+    } else {
+      sapply(
+        1:max(1, len - n + 1),
+        function(i) stringi::stri_join(tokens[i:min(len, i + n - 1)], collapse = " ")
+      )
+    }
+  }
+}
+
+```
+
+```{r sent_analy, echo=FALSE}
+# clasificar emociones
+class_emo <- classify_emotion(lstatements, algorithm="bayes", prior=1.0)
+# GET emotion best fit
+emotion <- class_emo[,7]
+
+# substitute NA's by "unknown"
+emotion[is.na(emotion)] = "unknown"
+
+# clasificar polaridad
+class_pol <- classify_polarity(lstatements, algorithm="bayes")
+# GET polarity best fit
+polarity <- class_pol[,4]
+
+# crear dataFrame con los resultados
+senti_df = data.frame(text=lstatements, emotion=emotion,
+polarity=polarity, stringsAsFactors=FALSE)
+
+```
+
+```{r corpusposinega, echo=FALSE}
+# Positive_statements data
+posiLW <- senti_df$data.last_words[senti_df$polarity=="positive"]
+# Negative_statements data
+negaLW <- senti_df$data.last_words[senti_df$polarity=="negative"]
+
+# Crea corpus_positivo
+corpusPOSI <- Corpus(VectorSource(posiLW))
+corpusPOSI <- sapply(corpusPOSI, as.character)
+# Crea corpus_negativo
+corpusNEGA <- Corpus(VectorSource(negaLW))
+corpusNEGA <- sapply(corpusNEGA, as.character)
+
+```
+
+### Clasificacion por Polaridad
+
+```{r pola_blk, echo=FALSE}
+ggplot(senti_df, aes(x=polarity)) + geom_bar(aes(y=..count.., fill=polarity)) + scale_fill_brewer(palette="Set1") + labs(x="polarity categories", y="count") + ggtitle("Clasificacion por Polaridad")
+
+```
+
+#### Bigramas mas usados_Tono Positivo
+```{r posiwords, echo=FALSE}
+wordsPOSI <- sort(table(ngram_tokenizer(2)(corpusPOSI)), decreasing = TRUE)
+head(wordsPOSI, 17)
+
+fw2p.df <- as.data.frame(wordsPOSI)
+wordcloud(fw2p.df$Var1, fw2p.df$Freq,max.words=18,random.order=FALSE, colors=brewer.pal(8,"Dark2"))
+
+```
+
+#### Bigramas mas usados_Tono Negativo
+```{r negawords, echo=FALSE}
+wordsNEGA <- sort(table(ngram_tokenizer(2)(corpusNEGA)), decreasing = TRUE)
+head(wordsNEGA, 20)
+
+fw2n.df <- as.data.frame(wordsNEGA)
+wordcloud(fw2n.df$Var1, fw2n.df$Freq,max.words=18,random.order=FALSE, colors=brewer.pal(8,"Dark2"))
+```
+
+### Clasificacion por Sentimiento
+
+```{r senti_blk, echo=FALSE}
+ggplot(senti_df, aes(x=emotion)) + geom_bar(aes(y=..count.., fill=emotion)) + scale_fill_brewer(palette="Dark2") + labs(x="emotion categories", y="count") +ggtitle("Clasificacion por Sentimiento")
+
+```
+
+#### Palabras mas usadas_Sentimiento: ANGER
+```{r angerwords1, echo=FALSE}
+angerLW <- senti_df$data.last_words[senti_df$emotion=="anger"]
+corpusANGER <- Corpus(VectorSource(angerLW))
+corpusANGER <- sapply(corpusANGER, as.character)
+wordsANGER <- sort(table(ngram_tokenizer(1)(corpusANGER)), decreasing = TRUE)
+head(wordsANGER, 15)
+```
+
+#### Bigramas mas usados_Sentimiento: ANGER
+```{r angerwords2, echo=FALSE}
+angerLW <- senti_df$data.last_words[senti_df$emotion=="anger"]
+corpusANGER <- Corpus(VectorSource(angerLW))
+corpusANGER <- sapply(corpusANGER, as.character)
+wordsANGER <- sort(table(ngram_tokenizer(2)(corpusANGER)), decreasing = TRUE)
+head(wordsANGER, 15)
+```
+
+#### Palabras mas usadas_Sentimiento: FEAR
+
+```{r fearwords1, echo=FALSE}
+fearLW <- senti_df$data.last_words[senti_df$emotion=="fear"]
+corpusFEAR <- Corpus(VectorSource(fearLW))
+corpusFEAR <- sapply(corpusFEAR, as.character)
+wordsFEAR <- sort(table(ngram_tokenizer(1)(corpusFEAR)), decreasing = TRUE)
+head(wordsFEAR, 15)
+```
+
+#### Bigramas mas usados_Sentimiento: FEAR
+
+```{r fearwords2, echo=FALSE}
+fearLW <- senti_df$data.last_words[senti_df$emotion=="fear"]
+corpusFEAR <- Corpus(VectorSource(fearLW))
+corpusFEAR <- sapply(corpusFEAR, as.character)
+wordsFEAR <- sort(table(ngram_tokenizer(2)(corpusFEAR)), decreasing = TRUE)
+head(wordsFEAR, 15)
+```
+
+#### Palabras mas usadas_Sentimiento: JOY
+
+```{r joywords1, echo=FALSE}
+joyLW <- senti_df$data.last_words[senti_df$emotion=="joy"]
+corpusJOY <- Corpus(VectorSource(joyLW))
+corpusJOY <- sapply(corpusJOY, as.character)
+wordsJOY <- sort(table(ngram_tokenizer(1)(corpusJOY)), decreasing = TRUE)
+head(wordsJOY, 15)
+```
+
+#### Bigramas mas usados_Sentimiento: JOY
+```{r joywords2, echo=FALSE}
+joyLW <- senti_df$data.last_words[senti_df$emotion=="joy"]
+corpusJOY <- Corpus(VectorSource(joyLW))
+corpusJOY <- sapply(corpusJOY, as.character)
+wordsJOY <- sort(table(ngram_tokenizer(2)(corpusJOY)), decreasing = TRUE)
+head(wordsJOY, 15)
+```
+
+#### Palabras mas usadas_Sentimiento: SADNESS
+```{r sadnesswords1, echo=FALSE}
+sadLW <- senti_df$data.last_words[senti_df$emotion=="sadness"]
+corpusSAD <- Corpus(VectorSource(sadLW))
+corpusSAD <- sapply(corpusSAD, as.character)
+wordsSAD <- sort(table(ngram_tokenizer(1)(corpusSAD)), decreasing = TRUE)
+head(wordsSAD, 15)
+```
+
+#### Bigramas mas usados_Sentimiento: SADNESS
+```{r sadnesswords2, echo=FALSE}
+sadLW <- senti_df$data.last_words[senti_df$emotion=="sadness"]
+corpusSAD <- Corpus(VectorSource(sadLW))
+corpusSAD <- sapply(corpusSAD, as.character)
+wordsSAD <- sort(table(ngram_tokenizer(2)(corpusSAD)), decreasing = TRUE)
+head(wordsSAD, 15)
+```
+
+```{r wordcloudEmo, echo=FALSE, warning=FALSE}
+# emotions
+emos <- levels(factor(senti_df$emotion))
+# N_emotions
+nemo <- length(emos)
+emo.docs <- rep("", nemo)
+
+for (i in 1:nemo)
+{
+tmp <- senti_df$data.last_words[senti_df$emotion==emos[i]]
+#tmp = lstatements[emotion == emos[i]]
+emo.docs[i] <- paste(tmp, collapse="")
+}
+
+#
+corpusLW <- Corpus(VectorSource(emo.docs))
+emos.tdm <- TermDocumentMatrix(corpusLW)
+emos.tdm <- as.matrix(emos.tdm)
+colnames(emos.tdm) = emos
+
+# comparison word cloud
+comparison.cloud(emos.tdm, colors = brewer.pal(nemo, "Dark2"), random.order=FALSE, title.size = 1.5, scale = c(3,.5))
+```
+
